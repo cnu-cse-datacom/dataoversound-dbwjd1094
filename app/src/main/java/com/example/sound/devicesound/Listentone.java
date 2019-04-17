@@ -74,54 +74,57 @@ public class Listentone {
             }
         }
         peak_freq = freq[max_index];
-        return abs(peak_freq*mSampleRate);
+        return Math.abs(peak_freq*mSampleRate);
     }
 
     private Double[] fftfreq(int length, int i) { //복소수를 실수로 변환
-        Double[] freq = new Double[length];
-        double fr = (double)1/(length*i);
+        Double[] freq = new Double[length+1];
+        double fr = (double)1/(double)(length*i);
+        double fr2 = -fr;
         int count=0;
-        if(length%2==0){ //length 길이가 짝수일때
+        if(length%2==0){ //length 길이가 `짝수일때
             for(int j=0 ; j<=length/2 ; j++){
-                freq[count] = ((double)j)/(length*i); count++;
+                freq[count] = ((double) j)*fr;
+                count++;
             }
             for(int j=length/2 ; j>0 ; j--){
-                freq[count] = ((double)-j)/(length*i); count++;
+                freq[count] = ((double) j)*fr2;
+                count++;
             }
         }
         else { //length 길이가 홀수일때
             for (int j = 0; j <= (length + 1) / 2; j++) {
                 if (j == (length + 1) / 2 - 1) {
-                    freq[count] = (((double) length - 1) / (2.0)) / (length * i);
+                    freq[count] = ((double) length - 1) / (2.0) * fr;
                     count++;
                 } else {
-                    freq[count] = ((double) j) / (length * i);
+                    freq[count] = ((double) j) * fr;
                     count++;
                 }
             }
             for (int j = (length + 1) / 2; j > 0; j--) {
                 if (j == (length + 1) / 2) {
-                    freq[count] = ((-1.0) * ((double) length - 1) / (2.0)) / (length * i);
+                    freq[count] = (-1.0) * ((double) length - 1) / (2.0) * fr;
                     count++;
                 } else {
-                    freq[count] = ((double) -j) / (length * i);
+                    freq[count] = ((double) -j) * fr2;
                     count++;
                 }
             }
-        }
+    }
         return freq;
     }
 
-    public List<Integer> decode_bitchunks(int chunk_bits, List<Integer> chunks){
-        List<Integer> out_bytes = new ArrayList<Integer>();
+    public ArrayList<Integer> decode_bitchunks(int chunk_bits, ArrayList<Integer> chunks){
+        ArrayList<Integer> out_bytes = new ArrayList<>();
         int next_read_chunk = 0;
         int next_read_bit = 0;
         int _byte = 0;
         int bits_left = 0;
 
-        while(next_read_bit<chunks.size()){
+        while(next_read_chunk<chunks.size()){
             int can_fill = chunk_bits - next_read_bit;
-            int to_fill = min(bits_left,can_fill);
+            int to_fill = Math.min(bits_left,can_fill);
             int offset = chunk_bits - next_read_bit - to_fill;
             _byte <<= to_fill;
             int shifted = chunks.get(next_read_chunk) & (((1 << to_fill) -1 ) << offset);
@@ -141,12 +144,12 @@ public class Listentone {
         return out_bytes;
     }
 
-    public List<Integer> extract_packet(List<Double> freq){
-        List<Double> freqs = new ArrayList<>();
-        List<Integer> bit_chunks = new ArrayList<>();
-        List<Integer> bit_chunks2 = new ArrayList<>();
+    public ArrayList<Integer> extract_packet(ArrayList<Double> freq){
+        ArrayList<Double> freqs = new ArrayList<>();
+        ArrayList<Integer> bit_chunks = new ArrayList<>();
+        ArrayList<Integer> bit_chunks2 = new ArrayList<>();
 
-        for(int i=0 ; i<freq.size() ; i++){
+        for(int i=1 ; i<freq.size() ; i++){
             if(i%2!=0){
                 freqs.add(freq.get(i));
             }
@@ -162,14 +165,15 @@ public class Listentone {
                 bit_chunks2.add(bit_chunks.get(i));
             }
         }
-        return decode_bitchunks(BITS,bit_chunks);
+        return decode_bitchunks(BITS,bit_chunks2);
     }
 
     public void PreRequest() {
         int blocksize = findPowerSize((int)(long)Math.round(interval/2*mSampleRate));
         short[] buffer = new short[blocksize]; //소리데이터
-        List<Double> packet = new ArrayList<>();
-        List<Integer> byte_stream = new ArrayList<>();
+        ArrayList<Double> packet = new ArrayList<>();
+        ArrayList<Integer> byte_stream = new ArrayList<>();
+        ArrayList<Character> byte_stream2 = new ArrayList<>();
 
         while(true){
             int bufferedReadResult = mAudioRecord.read(buffer,0,blocksize);
@@ -182,19 +186,21 @@ public class Listentone {
             }
             //double형 buffer2 배열에 buffer1 원소들 복사
             double dom = findFrequency(buffer2);
+            //Log.d("ListenToneCHUNK1",Double.toString(dom));
             if(startFlag && match(dom,HANDSHAKE_END_HZ)){
                 byte_stream = extract_packet(packet);
-                System.out.print("ListenTone RESULT:  ");
                 for(int i=0 ; i<byte_stream.size() ; i++){
-                    Log.d(" ",String.valueOf(byte_stream.get(i)));
+                    char byte_stream3 = (char)(int)byte_stream.get(i);
+                    Log.d("ListenTone_byte_stream",String.valueOf(byte_stream3));
+                    byte_stream2.add(byte_stream3);
                 }
-                //Log.d("ListenTone Result: ",)
+                display(byte_stream2);
                 packet.clear();
                 startFlag=false;
             }
             else if(startFlag){
                 packet.add(dom);
-                Log.d("ListenTone ChunkData: ",Double.toString(dom));
+                Log.d("ListenToneCHUNK2",Double.toString(dom));
             }
             else if(match(dom,HANDSHAKE_START_HZ)){
                 startFlag=true;
@@ -202,14 +208,26 @@ public class Listentone {
         }
     }
 
-    private boolean match(double a, int b) {
-        return Math.abs(a-(double)b)<20;
+    private void display(ArrayList<Character> byte_stream) {
+        ArrayList<Character> letter = byte_stream;
+        String str="";
+        for(int i=0 ; i<letter.size() ; i++){
+            str += Character.toString(letter.get(i));
+        }
+        Log.d("ListenTone_result",str);
     }
 
-    private int findPowerSize(int round) {
+    public boolean match(double a, int b) {
+        return Math.abs((int)a-b)<20;
+    }
+
+    public int findPowerSize(int round) {
         int sq=1;
-        for(int i=0 ; i<round ; i++){
-            sq *= 2;
+        while(true){
+            sq*=2;
+            if(sq>round){
+                break;
+            }
         }
         return sq;
     }
